@@ -1,0 +1,162 @@
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | Copyright (C) 2011-2016 OpenFOAM Foundation
+     \\/     M anipulation  |
+-------------------------------------------------------------------------------
+License
+    This file is part of OpenFOAM.
+
+    OpenFOAM is free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    OpenFOAM is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+    for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
+
+\*---------------------------------------------------------------------------*/
+
+#include "parabolicVelocityFvPatchVectorField.H"
+#include "volFields.H"
+#include "addToRunTimeSelectionTable.H"
+#include "fvPatchFieldMapper.H"
+#include "surfaceFields.H"
+#include "mathematicalConstants.H"
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::parabolicVelocityFvPatchVectorField::
+parabolicVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    centre_(Zero),
+    axis_(Zero),
+    Ubar_(),
+    R_()
+{}
+
+
+Foam::parabolicVelocityFvPatchVectorField::
+parabolicVelocityFvPatchVectorField
+(
+    const parabolicVelocityFvPatchVectorField& ptf,
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    centre_(ptf.centre_),
+    axis_(ptf.axis_),
+    Ubar_(ptf.Ubar_, false),
+    R_(ptf.R_, false)
+{}
+
+
+Foam::parabolicVelocityFvPatchVectorField::
+parabolicVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchField<vector>(p, iF, dict),
+    centre_(dict.lookup("centre")),
+    axis_(dict.lookup("axis")),
+    Ubar_(Function1<scalar>::New("Ubar", dict)),
+    R_(Function1<scalar>::New("R", dict))
+{}
+
+
+Foam::parabolicVelocityFvPatchVectorField::
+parabolicVelocityFvPatchVectorField
+(
+    const parabolicVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    centre_(ptf.centre_),
+    axis_(ptf.axis_),
+    Ubar_(ptf.Ubar_, false),
+    R_(ptf.R_, false)
+{}
+
+
+Foam::parabolicVelocityFvPatchVectorField::
+parabolicVelocityFvPatchVectorField
+(
+    const parabolicVelocityFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(ptf, iF),
+    centre_(ptf.centre_),
+    axis_(ptf.axis_),
+    Ubar_(ptf.Ubar_, false),
+    R_(ptf.R_, false)
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+void Foam::parabolicVelocityFvPatchVectorField::updateCoeffs()
+{
+    if (updated())
+    {
+        return;
+    }
+
+    const scalar t = this->db().time().timeOutputValue();
+    const scalar Ubar = Ubar_->value(t);
+    const scalar R = R_->value(t);
+
+    vector hatAxis = axis_/mag(axis_);
+
+    const vectorField rc(patch().Cf() - centre_);
+    const vectorField rcv(rc - (hatAxis & rc)*hatAxis);
+    const scalarField rcs(mag(rcv));
+
+    const scalarField parabolicU(2*Ubar*(1.0 - sqr(rcs/R)));
+
+    operator==(hatAxis*parabolicU);
+
+    fixedValueFvPatchField<vector>::updateCoeffs();
+}
+
+
+void Foam::parabolicVelocityFvPatchVectorField::write(Ostream& os) const
+{
+    fvPatchField<vector>::write(os);
+    os.writeKeyword("centre") << centre_ << token::END_STATEMENT << nl;
+    os.writeKeyword("axis") << axis_ << token::END_STATEMENT << nl;
+    Ubar_->writeData(os);
+    R_->writeData(os);
+    writeEntry("value", os);
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+   makePatchTypeField
+   (
+       fvPatchVectorField,
+       parabolicVelocityFvPatchVectorField
+   );
+}
+
+
+// ************************************************************************* //
